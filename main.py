@@ -35,7 +35,7 @@ def main():
 
     backend = Backend(connection)
     controller = Controller(backend)
-    controller.show_login()
+    controller.login_window.show()
 
     app.exec()
 
