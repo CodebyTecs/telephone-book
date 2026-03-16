@@ -1,0 +1,42 @@
+QWidget {
+    background-color: #D9D9D9;
+}
+QPushButton#photoButton {
+    background-color: transparent;
+    color: #000000;
+    border: 3px solid black;
+    border-radius: 60px;
+    font-size: 50px;
+    padding: 0px;
+    text-align: center;
+    vertical-align: middle;
+}
+QPushButton#photoButton:hover {
+    background-color: #979797;
+}
+QLineEdit, QDateEdit {
+    background-color: #e0e0e0;
+    color: #000000;
+    border: 2px solid black;
+    border-radius: 15px;
+    padding: 5px 15px;
+    min-height: 30px;
+    font-size: 18px;
+}
+QLabel {
+    color: #000000;
+    font-size: 24px;
+    margin-top: 5px;
+}
+QPushButton#saveButton {
+    background-color: #000000;
+    color: white;
+    border-radius: 25px; /* Большая величина для эффекта овала */
+    min-width: 150px;
+    min-height: 40px;
+    font-size: 16px;
+    padding: 10px;
+}
+QPushButton#saveButton:hover {
+    background-color: #3d3d3d;
+}

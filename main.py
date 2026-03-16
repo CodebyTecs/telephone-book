@@ -5,7 +5,7 @@ import psycopg
 from PyQt6.QtWidgets import QApplication
 
 from backend import Backend
-from frontend import MainWindow
+from frontend import Controller
 
 
 def load_env():
@@ -34,8 +34,8 @@ def main():
     app = QApplication(sys.argv)
 
     backend = Backend(connection)
-    window = MainWindow(backend)
-    window.show()
+    controller = Controller(backend)
+    controller.show_login()
 
     app.exec()
 
