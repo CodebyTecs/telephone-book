@@ -2,14 +2,16 @@ import os
 import sys
 
 import psycopg
-from PyQt6.QtWidgets import QApplication
 
 from backend import Backend
-from frontend import Controller
+from cli import run_cli
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def load_env():
-    with open(".env", "r", encoding="utf-8") as file:
+    env_path = os.path.join(BASE_DIR, ".env")
+    with open(env_path, "r", encoding="utf-8") as file:
         for line in file:
             line = line.strip()
 
@@ -20,10 +22,8 @@ def load_env():
             os.environ[key] = value
 
 
-def main():
-    load_env()
-
-    connection = psycopg.connect(
+def create_connection():
+    return psycopg.connect(
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT"),
         dbname=os.getenv("DB_NAME"),
@@ -31,16 +31,28 @@ def main():
         password=os.getenv("DB_PASSWORD")
     )
 
-    app = QApplication(sys.argv)
 
+def main():
+    load_env()
+    connection = create_connection()
     backend = Backend(connection)
-    controller = Controller(backend)
-    controller.login_window.show()
 
-    app.exec()
+    try:
+        if "--cli" in sys.argv:
+            run_cli(backend)
+            return
 
-    connection.close()
+        from PyQt6.QtWidgets import QApplication
+        from frontend import Controller
+
+        app = QApplication(sys.argv)
+        controller = Controller(backend)
+        controller.login_window.show()
+        app.exec()
+    finally:
+        connection.close()
 
 
 if __name__ == "__main__":
     main()
+
