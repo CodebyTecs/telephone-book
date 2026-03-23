@@ -238,12 +238,14 @@ class MainWindow(QMainWindow):
         self.btn_get = QPushButton("Получить")
         self.btn_update = QPushButton("Обновить")
         self.btn_sort = QPushButton("Сортировать")
+        self.btn_tree = QPushButton("Порядок ДОП")
 
         self.btn_create.clicked.connect(self.open_create_window)
         self.btn_get.clicked.connect(self.refresh_data)
         self.btn_update.clicked.connect(self.open_edit_window)
         self.btn_delete.clicked.connect(self.delete_contact)
         self.btn_sort.clicked.connect(self.sort_contacts)
+        self.btn_tree.clicked.connect(self.show_optimal_tree_order)
 
         self.button_layout.addStretch()
         self.button_layout.addWidget(self.btn_create)
@@ -251,6 +253,7 @@ class MainWindow(QMainWindow):
         self.button_layout.addWidget(self.btn_get)
         self.button_layout.addWidget(self.btn_update)
         self.button_layout.addWidget(self.btn_sort)
+        self.button_layout.addWidget(self.btn_tree)
         self.button_layout.addStretch()
 
         self.main_layout.addLayout(self.button_layout, stretch=0)
@@ -273,6 +276,25 @@ class MainWindow(QMainWindow):
             self._populate_table(contacts)
         except Exception as error:
             QMessageBox.critical(self, "Ошибка", f"Не удалось выполнить сортировку: {error}")
+
+    def show_optimal_tree_order(self):
+        try:
+            tree = self.backend.build_optimal_search_tree()
+            if not tree:
+                QMessageBox.information(self, "ДОП", "Нет данных для построения дерева")
+                return
+            contacts = []
+            self._inorder_traverse(tree, contacts)
+            self._populate_table(contacts)
+        except Exception as error:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось построить ДОП: {error}")
+
+    def _inorder_traverse(self, node, result):
+        if node is None:
+            return
+        self._inorder_traverse(node.get("left"), result)
+        result.append(node["contact"])
+        self._inorder_traverse(node.get("right"), result)
 
     def search_contact(self):
         query = self.search_input.text().strip()
