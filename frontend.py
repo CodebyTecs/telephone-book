@@ -1,6 +1,7 @@
 import os
 
-from PyQt6.QtCore import QDate, QSize, Qt
+from PyQt6.QtCore import QByteArray, QDate, QSize, Qt
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QFileDialog,
     QDateEdit,
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PyQt6.QtGui import QColor
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
@@ -112,7 +114,16 @@ class CreateEditWindow(QWidget):
         try:
             with open(file_path, "rb") as file:
                 self.photo_bytes = file.read()
-            self.btn_photo.setText("Фото выбрано")
+
+            from PyQt6.QtGui import QIcon
+            pixmap = QPixmap(file_path).scaled(
+                120, 120,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self.btn_photo.setText("")
+            self.btn_photo.setIcon(QIcon(pixmap))
+            self.btn_photo.setIconSize(QSize(120, 120))
         except OSError:
             QMessageBox.warning(self, "Ошибка", "Не удалось прочитать файл фото")
 
@@ -164,7 +175,30 @@ class MainWindow(QMainWindow):
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.main_layout = QHBoxLayout(self.central_widget)
+
+        outer_layout = QVBoxLayout(self.central_widget)
+        outer_layout.setSpacing(10)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        search_row = QHBoxLayout()
+        search_row.addStretch()
+        search_label = QLabel("Поиск по ФИО:")
+        search_label.setObjectName("searchLabel")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Введите ФИО...")
+        self.search_input.setFixedWidth(280)
+        self.search_input.setObjectName("searchInput")
+        self.btn_search = QPushButton("Найти")
+        self.btn_search.setObjectName("searchButton")
+        self.btn_search.setFixedWidth(100)
+        self.btn_search.clicked.connect(self.search_contact)
+        search_row.addWidget(search_label)
+        search_row.addWidget(self.search_input)
+        search_row.addWidget(self.btn_search)
+        outer_layout.addLayout(search_row)
+
+        self.main_layout = QHBoxLayout()
+        outer_layout.addLayout(self.main_layout)
 
         self.setup_table()
         self.setup_controls()
@@ -203,17 +237,20 @@ class MainWindow(QMainWindow):
         self.btn_delete = QPushButton("Удалить")
         self.btn_get = QPushButton("Получить")
         self.btn_update = QPushButton("Обновить")
+        self.btn_sort = QPushButton("Сортировать")
 
         self.btn_create.clicked.connect(self.open_create_window)
         self.btn_get.clicked.connect(self.refresh_data)
         self.btn_update.clicked.connect(self.open_edit_window)
         self.btn_delete.clicked.connect(self.delete_contact)
+        self.btn_sort.clicked.connect(self.sort_contacts)
 
         self.button_layout.addStretch()
         self.button_layout.addWidget(self.btn_create)
         self.button_layout.addWidget(self.btn_delete)
         self.button_layout.addWidget(self.btn_get)
         self.button_layout.addWidget(self.btn_update)
+        self.button_layout.addWidget(self.btn_sort)
         self.button_layout.addStretch()
 
         self.main_layout.addLayout(self.button_layout, stretch=0)
@@ -226,24 +263,78 @@ class MainWindow(QMainWindow):
     def refresh_data(self):
         try:
             contacts = self.backend.get_contacts()
-            self.table.setRowCount(0)
-            for row_number, contact in enumerate(contacts):
-                self.table.insertRow(row_number)
-                row_data = [
-                    str(contact.get("id", "")),
-                    "Есть" if contact.get("photo") else "",
-                    contact.get("full_name", ""),
-                    contact.get("phone_number", ""),
-                    contact.get("email", ""),
-                    contact.get("birth_date", ""),
-                    contact.get("address", ""),
-                ]
-                for column_number, text in enumerate(row_data):
-                    item = QTableWidgetItem(text)
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.table.setItem(row_number, column_number, item)
+            self._populate_table(contacts)
         except Exception as error:
             QMessageBox.critical(self, "Ошибка БД", f"Не удалось загрузить данные: {error}")
+
+    def sort_contacts(self):
+        try:
+            contacts = self.backend.sort_contacts()
+            self._populate_table(contacts)
+        except Exception as error:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось выполнить сортировку: {error}")
+
+    def search_contact(self):
+        query = self.search_input.text().strip()
+        if not query:
+            QMessageBox.warning(self, "Поиск", "Введите ФИО для поиска")
+            return
+        try:
+            result = self.backend.binary_search_by_full_name(query)
+            if result:
+                contacts = self.backend.sort_contacts()
+                self._populate_table(contacts)
+                for row in range(self.table.rowCount()):
+                    item = self.table.item(row, 2)
+                    if item and item.text().lower() == query.lower():
+                        self.table.selectRow(row)
+                        self.table.scrollToItem(item)
+                        for col in range(self.table.columnCount()):
+                            cell = self.table.item(row, col)
+                            if cell:
+                                cell.setBackground(QColor("#4a90d9"))
+                        break
+            else:
+                QMessageBox.information(self, "Поиск", f"Контакт '{query}' не найден")
+        except Exception as error:
+            QMessageBox.critical(self, "Ошибка", f"Ошибка поиска: {error}")
+
+    def _populate_table(self, contacts):
+        self.table.setRowCount(0)
+        self.table.setRowCount(len(contacts))
+        self.table.setIconSize(QSize(80, 80))
+        for row_number, contact in enumerate(contacts):
+            self.table.setRowHeight(row_number, 90)
+
+            item_id = QTableWidgetItem(str(contact.get("id", "")))
+            item_id.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row_number, 0, item_id)
+
+            photo_bytes = contact.get("photo")
+            if photo_bytes:
+                pixmap = QPixmap()
+                pixmap.loadFromData(QByteArray(bytes(photo_bytes)))
+                scaled = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                label = QLabel()
+                label.setPixmap(scaled)
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setCellWidget(row_number, 1, label)
+            else:
+                item_photo = QTableWidgetItem("—")
+                item_photo.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(row_number, 1, item_photo)
+
+            rest = [
+                contact.get("full_name", ""),
+                contact.get("phone_number", ""),
+                contact.get("email", ""),
+                contact.get("birth_date", ""),
+                contact.get("address", ""),
+            ]
+            for col_offset, text in enumerate(rest):
+                item = QTableWidgetItem(str(text) if text else "")
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(row_number, col_offset + 2, item)
 
     def delete_contact(self):
         selected_row = self.table.currentRow()
