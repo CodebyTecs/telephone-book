@@ -20,6 +20,7 @@ def print_help():
     print("  find <ФИО>            - бинарный поиск по ФИО")
     print("  sort                  - показать отсортированный список")
     print("  treefind <ФИО>        - поиск в оптимальном дереве")
+    print("  dop                   - построить ДОП и показать записи")
     print("  addphoto <id> <path>  - добавить фото из файла")
     print("  delphoto <id>         - удалить фото")
     print("  exit                  - выход\n")
@@ -67,6 +68,14 @@ def binary_search_sorted_contacts(sorted_contacts, full_name):
             right = middle - 1
 
     return None
+
+
+def dop_inorder_contacts(node, result):
+    if node is None:
+        return
+    dop_inorder_contacts(node.get("left"), result)
+    result.append(node["contact"])
+    dop_inorder_contacts(node.get("right"), result)
 
 
 def run_cli(backend):
@@ -183,6 +192,21 @@ def run_cli(backend):
                 print_contact(found)
             else:
                 print("Контакт не найден.")
+
+        elif command == "dop":
+            dop_data = backend.get_optimal_search_data()
+            if not dop_data["contacts"]:
+                print("Контактов нет.")
+                continue
+
+            sorted_contacts = dop_data["contacts"]
+            tree = dop_data["tree"]
+            contacts = []
+            dop_inorder_contacts(tree, contacts)
+
+            print("Порядок ДОП:")
+            for contact in contacts:
+                print_contact(contact)
 
         elif command == "addphoto":
             args = arg.split(maxsplit=1)

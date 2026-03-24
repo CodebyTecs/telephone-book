@@ -3,10 +3,6 @@ from pydantic import BaseModel, EmailStr, ValidationError
 from typing import Optional
 
 
-# =========================
-# Pydantic-модели
-# =========================
-
 class ContactCreate(BaseModel):
     full_name: str
     birth_date: Optional[str] = None
@@ -23,18 +19,16 @@ class ContactUpdate(BaseModel):
     address: Optional[str] = None
 
 
-# =========================
-# Узел дерева поиска
-# =========================
-
 class TreeNode:
     def __init__(self, key, contact):
+        # Создаем узел дерева с контактом и ссылками на детей.
         self.key = key
         self.contact = contact
         self.left = None
         self.right = None
 
     def to_dict(self):
+        # Переводим узел и его поддеревья в словарь.
         return {
             "key": self.key,
             "contact": self.contact,
@@ -43,20 +37,14 @@ class TreeNode:
         }
 
 
-# =========================
-# Backend
-# =========================
-
 class Backend:
     def __init__(self, connection):
+        # Сохраняем подключение к БД и память для списка контактов.
         self.connection = connection
-        self.memory_data = []  # in-memory хранилище для сортировки и поиска
-
-    # =========================
-    # Вспомогательные методы
-    # =========================
+        self.memory_data = []
 
     def _row_to_dict(self, row):
+        # Преобразуем строку из БД в словарь контакта.
         return {
             "id": row[0],
             "full_name": row[1] if row[1] else "",
@@ -68,6 +56,7 @@ class Backend:
         }
 
     def _normalize_data(self, data):
+        # Очищаем и нормализуем входные поля перед валидацией.
         return {
             "full_name": data.get("full_name", "").strip(),
             "birth_date": data.get("birth_date") or None,
@@ -77,14 +66,12 @@ class Backend:
         }
 
     def load_to_memory(self):
+        # Загружаем контакты в память для сортировки и поиска.
         self.memory_data = self.get_contacts()
         return self.memory_data
 
-    # =========================
-    # CRUD
-    # =========================
-
     def get_contacts(self):
+        # Читаем все контакты из базы по возрастанию id.
         with self.connection.cursor() as cursor:
             cursor.execute("""
                 SELECT id, full_name, birth_date, phone_number, email, address, photo
@@ -99,6 +86,7 @@ class Backend:
         return result
 
     def create_contact(self, data):
+        # Создаем новый контакт после проверки данных.
         try:
             data = self._normalize_data(data)
             contact = ContactCreate(**data)
@@ -129,6 +117,7 @@ class Backend:
             return None
 
     def update_contact(self, contact_id, data):
+        # Обновляем контакт по id после валидации.
         try:
             data = self._normalize_data(data)
             contact = ContactUpdate(**data)
@@ -169,6 +158,7 @@ class Backend:
             return None
 
     def delete_contact(self, contact_id):
+        # Удаляем контакт по id.
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute("DELETE FROM contacts WHERE id = %s", (int(contact_id),))
@@ -181,11 +171,8 @@ class Backend:
             self.connection.rollback()
             return False
 
-    # =========================
-    # Фото
-    # =========================
-
     def add_photo(self, contact_id, photo_bytes):
+        # Добавляем фото контакту по id.
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute("""
@@ -209,6 +196,7 @@ class Backend:
             return None
 
     def remove_photo(self, contact_id):
+        # Удаляем фото у контакта по id.
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute("""
@@ -231,23 +219,22 @@ class Backend:
             self.connection.rollback()
             return None
 
-    # =========================
-    # QuickSort
-    # =========================
-
     def sort_contacts(self):
+        # Сортируем контакты по ФИО быстрым алгоритмом.
         self.load_to_memory()
         if len(self.memory_data) > 1:
             self._quick_sort(self.memory_data, 0, len(self.memory_data) - 1)
         return self.memory_data
 
     def _quick_sort(self, arr, low, high):
+        # Рекурсивно сортируем часть массива quick sort.
         if low < high:
             pivot_index = self._partition(arr, low, high)
             self._quick_sort(arr, low, pivot_index - 1)
             self._quick_sort(arr, pivot_index + 1, high)
 
     def _partition(self, arr, low, high):
+        # Делим массив относительно опорного элемента.
         pivot = arr[high]["full_name"].lower()
         i = low - 1
 
@@ -259,11 +246,8 @@ class Backend:
         arr[i + 1], arr[high] = arr[high], arr[i + 1]
         return i + 1
 
-    # =========================
-    # Бинарный поиск по ФИО
-    # =========================
-
     def binary_search_by_full_name(self, full_name):
+        # Ищем контакт бинарным поиском в отсортированном списке.
         sorted_contacts = self.sort_contacts()
         target = full_name.strip().lower()
 
@@ -283,31 +267,64 @@ class Backend:
 
         return None
 
-    # =========================
-    # Дерево оптимального поиска
-    # =========================
-
     def build_optimal_search_tree(self):
+        # Строим ДОП и возвращаем только дерево.
+        result = self.get_optimal_search_data()
+        return result["tree"]
+
+    def get_optimal_search_data(self):
+        # Строим ДОП и возвращаем дерево и таблицы алгоритма.
         contacts = self.sort_contacts()
 
         if not contacts:
-            return None
+            return {
+                "contacts": [],
+                "keys": [],
+                "tree": None,
+                "cost_table": [],
+                "root_table": []
+            }
 
         weights = self._get_weights(contacts)
-        root_table = self._algorithm_a1(weights)
+        cost_table, root_table = self._algorithm_a1(weights)
         tree = self._build_tree(contacts, root_table, 0, len(contacts) - 1)
 
-        if tree:
-            return tree.to_dict()
-        return None
+        normalized_cost = []
+        normalized_root = []
+        n = len(contacts)
+
+        for i in range(n):
+            cost_row = []
+            root_row = []
+            for j in range(n):
+                if j < i:
+                    cost_row.append(None)
+                    root_row.append(None)
+                    continue
+
+                cost_row.append(cost_table[i][j])
+                root_row.append(root_table[i][j] + 1)
+
+            normalized_cost.append(cost_row)
+            normalized_root.append(root_row)
+
+        return {
+            "contacts": contacts,
+            "keys": [contact["full_name"] for contact in contacts],
+            "tree": tree.to_dict() if tree else None,
+            "cost_table": normalized_cost,
+            "root_table": normalized_root
+        }
 
     def _get_weights(self, contacts):
+        # Задаем веса ключей для алгоритма A1.
         weights = []
         for _ in contacts:
             weights.append(1)
         return weights
 
     def _algorithm_a1(self, weights):
+        # Считаем матрицы стоимости и корней для ДОП.
         n = len(weights)
 
         cost = []
@@ -339,9 +356,10 @@ class Backend:
                         cost[left][right] = current_cost
                         root[left][right] = r
 
-        return root
+        return cost, root
 
     def _build_tree(self, contacts, root_table, left, right):
+        # Собираем дерево из таблицы корней.
         if left > right:
             return None
 
@@ -354,6 +372,7 @@ class Backend:
         return node
 
     def search_in_optimal_tree(self, tree, full_name):
+        # Ищем контакт в уже построенном дереве ДОП.
         current = tree
         target = full_name.strip().lower()
 

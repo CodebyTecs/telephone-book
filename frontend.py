@@ -24,6 +24,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 
 def apply_style(widget, filename):
+    # Применяем qss-стили к окну из файла.
     try:
         full_path = os.path.join(ASSETS_DIR, filename)
         with open(full_path, "r", encoding="utf-8") as file:
@@ -34,6 +35,7 @@ def apply_style(widget, filename):
 
 class LoginWindow(QWidget):
     def __init__(self):
+        # Создаем простое окно входа с кнопкой.
         super().__init__()
         self.setWindowTitle("Вход в систему")
         self.setFixedSize(QSize(350, 200))
@@ -54,6 +56,7 @@ class LoginWindow(QWidget):
 
 class CreateEditWindow(QWidget):
     def __init__(self, backend):
+        # Создаем форму для добавления и редактирования контакта.
         super().__init__()
         self.backend = backend
         self.setWindowTitle("Создать/Редактировать")
@@ -101,6 +104,7 @@ class CreateEditWindow(QWidget):
         self.setLayout(layout)
 
     def pick_photo(self):
+        # Выбираем фото с диска и подставляем в кнопку.
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Выберите фото",
@@ -128,6 +132,7 @@ class CreateEditWindow(QWidget):
             QMessageBox.warning(self, "Ошибка", "Не удалось прочитать файл фото")
 
     def save_contact(self):
+        # Сохраняем контакт: создаем новый или обновляем текущий.
         data = {
             "full_name": self.input_name.text(),
             "phone_number": self.input_number.text(),
@@ -153,6 +158,7 @@ class CreateEditWindow(QWidget):
             QMessageBox.warning(self, "Ошибка", "Не удалось сохранить данные")
 
     def load_contact_data(self, data):
+        # Загружаем данные контакта в форму редактирования.
         self.current_id = data.get("id")
         self.input_name.setText(data.get("full_name", ""))
         self.input_number.setText(data.get("phone_number", ""))
@@ -166,6 +172,7 @@ class CreateEditWindow(QWidget):
 
 class MainWindow(QMainWindow):
     def __init__(self, backend):
+        # Создаем главное окно с таблицей и кнопками.
         super().__init__()
         self.backend = backend
         self.setWindowTitle("Телефонная книга")
@@ -204,6 +211,7 @@ class MainWindow(QMainWindow):
         self.setup_controls()
 
     def setup_table(self):
+        # Настраиваем таблицу для отображения контактов.
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
@@ -229,6 +237,7 @@ class MainWindow(QMainWindow):
         self.main_layout.addWidget(self.table, stretch=2)
 
     def setup_controls(self):
+        # Создаем и подключаем кнопки управления.
         self.button_layout = QVBoxLayout()
         self.button_layout.setSpacing(20)
         self.button_layout.setContentsMargins(20, 20, 20, 20)
@@ -259,11 +268,13 @@ class MainWindow(QMainWindow):
         self.main_layout.addLayout(self.button_layout, stretch=0)
 
     def open_create_window(self):
+        # Открываем окно создания нового контакта.
         self.edit_window = CreateEditWindow(self.backend)
         self.edit_window.destroyed.connect(self.refresh_data)
         self.edit_window.show()
 
     def refresh_data(self):
+        # Загружаем данные из БД и обновляем таблицу.
         try:
             contacts = self.backend.get_contacts()
             self._populate_table(contacts)
@@ -271,6 +282,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка БД", f"Не удалось загрузить данные: {error}")
 
     def sort_contacts(self):
+        # Сортируем контакты и показываем результат в таблице.
         try:
             contacts = self.backend.sort_contacts()
             self._populate_table(contacts)
@@ -278,6 +290,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Не удалось выполнить сортировку: {error}")
 
     def show_optimal_tree_order(self):
+        # Строим ДОП и выводим записи в порядке inorder.
         try:
             tree = self.backend.build_optimal_search_tree()
             if not tree:
@@ -290,6 +303,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Не удалось построить ДОП: {error}")
 
     def _inorder_traverse(self, node, result):
+        # Обходим дерево симметрично и собираем контакты.
         if node is None:
             return
         self._inorder_traverse(node.get("left"), result)
@@ -297,31 +311,78 @@ class MainWindow(QMainWindow):
         self._inorder_traverse(node.get("right"), result)
 
     def search_contact(self):
+        # Ищем контакт выбранным способом и подсвечиваем строку.
         query = self.search_input.text().strip()
         if not query:
             QMessageBox.warning(self, "Поиск", "Введите ФИО для поиска")
             return
+
         try:
-            result = self.backend.binary_search_by_full_name(query)
+            mode = self._ask_search_mode()
+            if mode is None:
+                return
+
+            if mode == "binary":
+                result = self.backend.binary_search_by_full_name(query)
+            else:
+                tree = self.backend.build_optimal_search_tree()
+                if not tree:
+                    QMessageBox.information(self, "Поиск", "Нет данных для поиска по дереву")
+                    return
+                result = self.backend.search_in_optimal_tree(tree, query)
+
             if result:
                 contacts = self.backend.sort_contacts()
                 self._populate_table(contacts)
-                for row in range(self.table.rowCount()):
-                    item = self.table.item(row, 2)
-                    if item and item.text().lower() == query.lower():
-                        self.table.selectRow(row)
-                        self.table.scrollToItem(item)
-                        for col in range(self.table.columnCount()):
-                            cell = self.table.item(row, col)
-                            if cell:
-                                cell.setBackground(QColor("#4a90d9"))
-                        break
+                self._highlight_found_contact(result)
             else:
                 QMessageBox.information(self, "Поиск", f"Контакт '{query}' не найден")
         except Exception as error:
             QMessageBox.critical(self, "Ошибка", f"Ошибка поиска: {error}")
 
+    def _ask_search_mode(self):
+        # Спрашиваем у пользователя метод поиска.
+        box = QMessageBox(self)
+        box.setWindowTitle("Поиск")
+        box.setText("Выберите способ поиска")
+
+        binary_button = box.addButton("Бинарный", QMessageBox.ButtonRole.AcceptRole)
+        tree_button = box.addButton("По дереву", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Отмена", QMessageBox.ButtonRole.RejectRole)
+
+        box.exec()
+        clicked_button = box.clickedButton()
+
+        if clicked_button == binary_button:
+            return "binary"
+        if clicked_button == tree_button:
+            return "tree"
+        return None
+
+    def _highlight_found_contact(self, contact):
+        # Подсвечиваем найденный контакт в таблице.
+        target_id = str(contact.get("id", ""))
+
+        for row in range(self.table.rowCount()):
+            item_id = self.table.item(row, 0)
+            if item_id is None:
+                continue
+            if item_id.text() != target_id:
+                continue
+
+            name_item = self.table.item(row, 2)
+            self.table.selectRow(row)
+            if name_item:
+                self.table.scrollToItem(name_item)
+
+            for col in range(self.table.columnCount()):
+                cell = self.table.item(row, col)
+                if cell:
+                    cell.setBackground(QColor("#4a90d9"))
+            break
+
     def _populate_table(self, contacts):
+        # Заполняем таблицу списком контактов.
         self.table.setRowCount(0)
         self.table.setRowCount(len(contacts))
         self.table.setIconSize(QSize(80, 80))
@@ -359,6 +420,7 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row_number, col_offset + 2, item)
 
     def delete_contact(self):
+        # Удаляем выбранную запись после подтверждения.
         selected_row = self.table.currentRow()
         if selected_row < 0:
             QMessageBox.warning(self, "Внимание", "Выберите запись для удаления")
@@ -379,6 +441,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Ошибка", "Не удалось удалить запись")
 
     def open_edit_window(self):
+        # Открываем окно редактирования выбранного контакта.
         selected_row = self.table.currentRow()
         if selected_row < 0:
             QMessageBox.warning(self, "Внимание", "Выберите запись для редактирования")
@@ -401,12 +464,14 @@ class MainWindow(QMainWindow):
 
 class Controller:
     def __init__(self, backend):
+        # Связываем окна и стартуем с окна входа.
         self.backend = backend
         self.login_window = LoginWindow()
         self.main_window = None
         self.login_window.button.clicked.connect(self.show_main_and_close_login)
 
     def show_main_and_close_login(self):
+        # Показываем главное окно и закрываем окно входа.
         self.main_window = MainWindow(self.backend)
         self.main_window.show()
         self.login_window.close()
