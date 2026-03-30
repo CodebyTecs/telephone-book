@@ -17,7 +17,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QPainter, QBrush, QPen, QPainterPath, QColor
+from PyQt6.QtCore import QRectF
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
@@ -31,6 +32,72 @@ def apply_style(widget, filename):
             widget.setStyleSheet(file.read())
     except FileNotFoundError:
         print(f"Предупреждение: файл {filename} не найден")
+
+class CircularPhotoButton(QPushButton):
+    def __init__(self, parent=None, size=120):
+        # Создаем круглую кнопку для отображения фотографии контакта.
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        self.setCheckable(False)
+        self.pixmap = None
+        self.base_color = QColor("#D9D9D9")
+        self.border_color = Qt.GlobalColor.black
+        self.border_width = 3
+        self.setText("+")
+
+    def set_pixmap(self, pixmap):
+        # Устанавливаем и масштабируем изображение для заполнения кнопки.
+        self.pixmap = pixmap.scaled(
+            self.width(), self.height(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.setText("")
+        self.update()
+
+    def clear_pixmap(self):
+        # Удаляем изображение и возвращаем исходный вид кнопки.
+        self.pixmap = None
+        self.setText("+")
+        self.update()
+
+    def paintEvent(self, event):
+        # Отрисовываем кнопку с использованием круглой маски и границ.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+
+        content_rect = QRectF(rect).adjusted(
+            self.border_width / 2.0, self.border_width / 2.0,
+            -self.border_width / 2.0, -self.border_width / 2.0
+        )
+
+        painter.setBrush(QBrush(self.base_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(content_rect)
+
+        if self.pixmap:
+            path = QPainterPath()
+            path.addEllipse(content_rect)
+            painter.setClipPath(path)
+            
+            x = (rect.width() - self.pixmap.width()) // 2
+            y = (rect.height() - self.pixmap.height()) // 2
+            painter.drawPixmap(x, y, self.pixmap)
+            
+            painter.setClipPath(QPainterPath())
+
+        painter.setPen(QPen(self.border_color, self.border_width))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(content_rect)
+        
+        if not self.pixmap and self.text():
+            font = self.font()
+            font.setPointSize(50)
+            painter.setFont(font)
+            painter.setPen(self.border_color)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
 
 
 class LoginWindow(QWidget):
@@ -62,15 +129,30 @@ class CreateEditWindow(QWidget):
         self.setWindowTitle("Создать/Редактировать")
         self.setFixedSize(QSize(400, 750))
         self.photo_bytes = None
+        self.photo_changed = False
 
         apply_style(self, "create_edit_screen.qss")
         layout = QVBoxLayout()
         layout.setSpacing(10)
         layout.setContentsMargins(30, 20, 30, 20)
 
-        self.btn_photo = QPushButton("+")
+        # Контейнер для кнопок фото, чтобы разместить их в ряд
+        photo_layout = QHBoxLayout()
+        photo_layout.setSpacing(15)
+
+        self.btn_photo = CircularPhotoButton(size=120)
         self.btn_photo.setObjectName("photoButton")
-        self.btn_photo.setFixedSize(120, 120)
+
+        self.btn_remove_photo = QPushButton("Удалить фото")
+        self.btn_remove_photo.setObjectName("removePhotoButton")
+        self.btn_remove_photo.setVisible(False)
+        self.btn_remove_photo.clicked.connect(self.remove_photo)
+
+        photo_layout.addStretch()
+        photo_layout.addWidget(self.btn_photo)
+        photo_layout.addWidget(self.btn_remove_photo)
+        photo_layout.addStretch()
+
         self.label = QLabel("ФИО")
         self.input_name = QLineEdit()
         self.label1 = QLabel("Номер")
@@ -81,13 +163,14 @@ class CreateEditWindow(QWidget):
         self.input_address = QLineEdit()
         self.label4 = QLabel("Дата рождения")
         self.input_date = QDateEdit()
+        self.input_date.setMaximumDate(QDate.currentDate())
         self.btn_save = QPushButton("Сохранить")
         self.btn_save.setObjectName("saveButton")
 
         self.btn_save.clicked.connect(self.save_contact)
         self.btn_photo.clicked.connect(self.pick_photo)
 
-        layout.addWidget(self.btn_photo, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addLayout(photo_layout)
         layout.addWidget(self.label)
         layout.addWidget(self.input_name)
         layout.addWidget(self.label1)
@@ -118,18 +201,22 @@ class CreateEditWindow(QWidget):
         try:
             with open(file_path, "rb") as file:
                 self.photo_bytes = file.read()
+            
+            self.photo_changed = True
 
-            from PyQt6.QtGui import QIcon
-            pixmap = QPixmap(file_path).scaled(
-                120, 120,
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self.btn_photo.setText("")
-            self.btn_photo.setIcon(QIcon(pixmap))
-            self.btn_photo.setIconSize(QSize(120, 120))
+            pixmap = QPixmap(file_path)
+            self.btn_photo.set_pixmap(pixmap)
+            self.btn_remove_photo.setVisible(True)
         except OSError:
             QMessageBox.warning(self, "Ошибка", "Не удалось прочитать файл фото")
+    
+    def remove_photo(self):
+        # Удаляем фото: если контакт уже сохранён — удаляем из БД, иначе сбрасываем локально.
+        self.photo_bytes = None
+        self.photo_changed = True
+        
+        self.btn_photo.clear_pixmap()
+        self.btn_remove_photo.setVisible(False)
 
     def save_contact(self):
         # Сохраняем контакт: создаем новый или обновляем текущий.
@@ -143,13 +230,16 @@ class CreateEditWindow(QWidget):
 
         if hasattr(self, "current_id") and self.current_id:
             result = self.backend.update_contact(self.current_id, data)
+            contact_id = self.current_id
         else:
             result = self.backend.create_contact(data)
+            contact_id = result.get("id") if result else None
 
-        if result and self.photo_bytes is not None:
-            photo_result = self.backend.add_photo(result["id"], self.photo_bytes)
-            if photo_result:
-                result = photo_result
+        if result and contact_id and self.photo_changed:
+            if self.photo_bytes:
+                self.backend.add_photo(contact_id, self.photo_bytes)
+            else:
+                self.backend.remove_photo(contact_id)
 
         if result:
             QMessageBox.information(self, "Успех", "Данные сохранены!")
@@ -164,10 +254,19 @@ class CreateEditWindow(QWidget):
         self.input_number.setText(data.get("phone_number", ""))
         self.input_email.setText(data.get("email", ""))
         self.input_address.setText(data.get("address", ""))
-
+ 
         date_str = data.get("birth_date")
         if date_str:
             self.input_date.setDate(QDate.fromString(date_str, "yyyy-MM-dd"))
+ 
+        if data.get("photo"):
+            self.photo_bytes = bytes(data["photo"])
+            self.photo_changed = False
+            
+            pixmap = QPixmap()
+            pixmap.loadFromData(QByteArray(self.photo_bytes))
+            self.btn_photo.set_pixmap(pixmap)
+            self.btn_remove_photo.setVisible(True)
 
 
 class MainWindow(QMainWindow):
@@ -446,20 +545,19 @@ class MainWindow(QMainWindow):
         if selected_row < 0:
             QMessageBox.warning(self, "Внимание", "Выберите запись для редактирования")
             return
+        
+        contact_id = self.table.item(selected_row, 0).text()
 
-        contact_data = {
-            "id": self.table.item(selected_row, 0).text(),
-            "full_name": self.table.item(selected_row, 2).text(),
-            "phone_number": self.table.item(selected_row, 3).text(),
-            "email": self.table.item(selected_row, 4).text(),
-            "birth_date": self.table.item(selected_row, 5).text(),
-            "address": self.table.item(selected_row, 6).text(),
-        }
+        contacts = self.backend.get_contacts()
+        contact_data = next((c for c in contacts if str(c.get("id")) == contact_id), None)
 
-        self.edit_window = CreateEditWindow(self.backend)
-        self.edit_window.load_contact_data(contact_data)
-        self.edit_window.destroyed.connect(self.refresh_data)
-        self.edit_window.show()
+        if contact_data:
+            self.edit_window = CreateEditWindow(self.backend)
+            self.edit_window.load_contact_data(contact_data)
+            self.edit_window.destroyed.connect(self.refresh_data)
+            self.edit_window.show()
+        else:
+            QMessageBox.critical(self, "Ошибка", "Не удалось загрузить полные данные контакта")
 
 
 class Controller:
