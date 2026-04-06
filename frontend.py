@@ -276,6 +276,8 @@ class MainWindow(QMainWindow):
         self.backend = backend
         self.setWindowTitle("Телефонная книга")
         self.resize(1250, 700)
+        self.search_choiced = False
+        self._current_search_mode = None  # "binary" или "tree"
 
         apply_style(self, "main_screen.qss")
 
@@ -286,10 +288,14 @@ class MainWindow(QMainWindow):
         outer_layout.setSpacing(10)
         outer_layout.setContentsMargins(10, 10, 10, 10)
 
-        search_row = QHBoxLayout()
+        # Строка поиска — скрыта до выбора типа поиска
+        self.search_row_widget = QWidget()
+        self.search_row_widget.setVisible(False)
+        search_row = QHBoxLayout(self.search_row_widget)
+        search_row.setContentsMargins(0, 0, 0, 0)
         search_row.addStretch()
-        search_label = QLabel("Поиск по ФИО:")
-        search_label.setObjectName("searchLabel")
+        self.search_label = QLabel("Поиск по ФИО:")
+        self.search_label.setObjectName("searchLabel")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Введите ФИО...")
         self.search_input.setFixedWidth(280)
@@ -298,10 +304,10 @@ class MainWindow(QMainWindow):
         self.btn_search.setObjectName("searchButton")
         self.btn_search.setFixedWidth(100)
         self.btn_search.clicked.connect(self.search_contact)
-        search_row.addWidget(search_label)
+        search_row.addWidget(self.search_label)
         search_row.addWidget(self.search_input)
         search_row.addWidget(self.btn_search)
-        outer_layout.addLayout(search_row)
+        outer_layout.addWidget(self.search_row_widget)
 
         self.main_layout = QHBoxLayout()
         outer_layout.addLayout(self.main_layout)
@@ -347,6 +353,7 @@ class MainWindow(QMainWindow):
         self.btn_update = QPushButton("Обновить")
         self.btn_sort = QPushButton("Сортировать")
         self.btn_tree = QPushButton("Порядок ДОП")
+        self.btn_choice_search = QPushButton("Поиск")
 
         self.btn_create.clicked.connect(self.open_create_window)
         self.btn_get.clicked.connect(self.refresh_data)
@@ -354,6 +361,7 @@ class MainWindow(QMainWindow):
         self.btn_delete.clicked.connect(self.delete_contact)
         self.btn_sort.clicked.connect(self.sort_contacts)
         self.btn_tree.clicked.connect(self.show_optimal_tree_order)
+        self.btn_choice_search.clicked.connect(self.choose_search_mode)
 
         self.button_layout.addStretch()
         self.button_layout.addWidget(self.btn_create)
@@ -362,9 +370,29 @@ class MainWindow(QMainWindow):
         self.button_layout.addWidget(self.btn_update)
         self.button_layout.addWidget(self.btn_sort)
         self.button_layout.addWidget(self.btn_tree)
+        self.button_layout.addWidget(self.btn_choice_search)
         self.button_layout.addStretch()
 
         self.main_layout.addLayout(self.button_layout, stretch=0)
+
+    def choose_search_mode(self):
+        # Спрашиваем тип поиска и показываем строку поиска с нужным плейсхолдером.
+        mode = self._ask_search_mode()
+        if mode is None:
+            return
+
+        self._current_search_mode = mode
+
+        if mode == "binary":
+            self.search_label.setText("Поиск по ФИО:")
+            self.search_input.setPlaceholderText("Введите ФИО...")
+        else:
+            self.search_label.setText("Поиск по номеру:")
+            self.search_input.setPlaceholderText("Введите номер телефона...")
+
+        self.search_input.clear()
+        self.search_row_widget.setVisible(True)
+        self.search_input.setFocus()
 
     def open_create_window(self):
         # Открываем окно создания нового контакта.
@@ -410,18 +438,14 @@ class MainWindow(QMainWindow):
         self._inorder_traverse(node.get("right"), result)
 
     def search_contact(self):
-        # Ищем контакт выбранным способом и подсвечиваем строку.
+        # Выполняем поиск выбранным ранее способом и подсвечиваем строку.
         query = self.search_input.text().strip()
         if not query:
-            QMessageBox.warning(self, "Поиск", "Введите ФИО для поиска")
+            QMessageBox.warning(self, "Поиск", "Введите запрос для поиска")
             return
 
         try:
-            mode = self._ask_search_mode()
-            if mode is None:
-                return
-
-            if mode == "binary":
+            if self._current_search_mode == "binary":
                 result = self.backend.binary_search_by_full_name(query)
             else:
                 tree = self.backend.build_optimal_search_tree()
@@ -445,8 +469,8 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("Поиск")
         box.setText("Выберите способ поиска")
 
-        binary_button = box.addButton("Бинарный", QMessageBox.ButtonRole.AcceptRole)
-        tree_button = box.addButton("По дереву", QMessageBox.ButtonRole.AcceptRole)
+        binary_button = box.addButton("Бинарный (по ФИО)", QMessageBox.ButtonRole.AcceptRole)
+        tree_button = box.addButton("По дереву (по номеру)", QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Отмена", QMessageBox.ButtonRole.RejectRole)
 
         box.exec()
@@ -502,9 +526,18 @@ class MainWindow(QMainWindow):
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setCellWidget(row_number, 1, label)
             else:
-                item_photo = QTableWidgetItem("—")
-                item_photo.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row_number, 1, item_photo)
+                default_path = os.path.join(BASE_DIR, "default.jpg")
+                default_pixmap = QPixmap(default_path)
+                if not default_pixmap.isNull():
+                    scaled = default_pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    label = QLabel()
+                    label.setPixmap(scaled)
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setCellWidget(row_number, 1, label)
+                else:
+                    item_photo = QTableWidgetItem("—")
+                    item_photo.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(row_number, 1, item_photo)
 
             rest = [
                 contact.get("full_name", ""),
