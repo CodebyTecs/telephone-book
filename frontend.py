@@ -352,7 +352,7 @@ class MainWindow(QMainWindow):
         self.btn_get = QPushButton("Получить")
         self.btn_update = QPushButton("Обновить")
         self.btn_sort = QPushButton("Сортировать")
-        self.btn_tree = QPushButton("Порядок ДОП")
+        self.btn_tree = QPushButton("ДОП по телефону")
         self.btn_choice_search = QPushButton("Поиск")
 
         self.btn_create.clicked.connect(self.open_create_window)
@@ -417,7 +417,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Не удалось выполнить сортировку: {error}")
 
     def show_optimal_tree_order(self):
-        # Строим ДОП и выводим записи в порядке inorder.
+        # Строим ДОП по номеру телефона и выводим записи в порядке inorder.
         try:
             tree = self.backend.build_optimal_search_tree()
             if not tree:

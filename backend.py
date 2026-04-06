@@ -246,6 +246,38 @@ class Backend:
         arr[i + 1], arr[high] = arr[high], arr[i + 1]
         return i + 1
 
+    def _normalize_phone_key(self, phone_number):
+        # Для поиска по телефону сравниваем только цифры, игнорируя скобки и пробелы.
+        digits = "".join(symbol for symbol in str(phone_number) if symbol.isdigit())
+        return digits if digits else str(phone_number).strip()
+
+    def _phone_key(self, contact):
+        return self._normalize_phone_key(contact["phone_number"])
+
+    def _sort_contacts_by_phone_number(self):
+        contacts = self.get_contacts()
+        if len(contacts) > 1:
+            self._quick_sort_by_phone_number(contacts, 0, len(contacts) - 1)
+        return contacts
+
+    def _quick_sort_by_phone_number(self, arr, low, high):
+        if low < high:
+            pivot_index = self._partition_by_phone_number(arr, low, high)
+            self._quick_sort_by_phone_number(arr, low, pivot_index - 1)
+            self._quick_sort_by_phone_number(arr, pivot_index + 1, high)
+
+    def _partition_by_phone_number(self, arr, low, high):
+        pivot = self._phone_key(arr[high])
+        i = low - 1
+
+        for j in range(low, high):
+            if self._phone_key(arr[j]) <= pivot:
+                i += 1
+                arr[i], arr[j] = arr[j], arr[i]
+
+        arr[i + 1], arr[high] = arr[high], arr[i + 1]
+        return i + 1
+
     def binary_search_by_full_name(self, full_name):
         # Ищем контакт бинарным поиском в отсортированном списке.
         sorted_contacts = self.sort_contacts()
@@ -274,7 +306,7 @@ class Backend:
 
     def get_optimal_search_data(self):
         # Строим ДОП и возвращаем дерево и таблицы алгоритма.
-        contacts = self.sort_contacts()
+        contacts = self._sort_contacts_by_phone_number()
 
         if not contacts:
             return {
@@ -310,7 +342,7 @@ class Backend:
 
         return {
             "contacts": contacts,
-            "keys": [contact["full_name"] for contact in contacts],
+            "keys": [contact["phone_number"] for contact in contacts],
             "tree": tree.to_dict() if tree else None,
             "cost_table": normalized_cost,
             "root_table": normalized_root
@@ -364,20 +396,20 @@ class Backend:
             return None
 
         root_index = root_table[left][right]
-        node = TreeNode(contacts[root_index]["full_name"], contacts[root_index])
+        node = TreeNode(contacts[root_index]["phone_number"], contacts[root_index])
 
         node.left = self._build_tree(contacts, root_table, left, root_index - 1)
         node.right = self._build_tree(contacts, root_table, root_index + 1, right)
 
         return node
 
-    def search_in_optimal_tree(self, tree, full_name):
+    def search_in_optimal_tree(self, tree, phone_number):
         # Ищем контакт в уже построенном дереве ДОП.
         current = tree
-        target = full_name.strip().lower()
+        target = self._normalize_phone_key(phone_number)
 
         while current is not None:
-            current_key = current["key"].lower()
+            current_key = self._normalize_phone_key(current["key"])
 
             if current_key == target:
                 return current["contact"]

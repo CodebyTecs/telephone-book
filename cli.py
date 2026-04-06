@@ -19,8 +19,8 @@ def print_help():
     print("  delete <id>           - удалить контакт")
     print("  find <ФИО>            - бинарный поиск по ФИО")
     print("  sort                  - показать отсортированный список")
-    print("  treefind <ФИО>        - поиск в оптимальном дереве")
-    print("  dop                   - построить ДОП и показать записи")
+    print("  treefind <телефон>    - поиск в оптимальном дереве по номеру")
+    print("  dop                   - построить ДОП по телефону и показать записи")
     print("  addphoto <id> <path>  - добавить фото из файла")
     print("  delphoto <id>         - удалить фото")
     print("  exit                  - выход\n")
@@ -180,10 +180,13 @@ def run_cli(backend):
 
         elif command == "treefind":
             if not arg:
-                print("Укажите ФИО: treefind <ФИО>")
+                print("Укажите номер телефона: treefind <телефон>")
                 continue
-            if sorted_contacts is None or tree is None:
-                print("Сначала выполните sort.")
+            if tree is None:
+                tree = backend.build_optimal_search_tree()
+
+            if tree is None:
+                print("Контактов нет.")
                 continue
 
             found = backend.search_in_optimal_tree(tree, arg)
